@@ -31,7 +31,7 @@ func main() {
 	// Create the display
 	//width, height := 256*(*scale), 192*(*scale)
 	//m := image.NewRGBA(image.Rect(0, 0, width, height))
-	machine := vm.CreateVM(file, rom)
+	machine := vm.NewVaporVM(file, rom)
 
 	fmt.Printf("File: %v, ROM: %v, Scale: %v\n", len(file), len(rom), scale)
 

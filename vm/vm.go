@@ -1,8 +1,13 @@
 package vm
 
 import (
+	"bufio"
 	"fmt"
+	"log"
 	"os"
+	"time"
+
+	"github.com/jroimartin/gocui"
 )
 
 // VaporVM An instance of a VaporSpec VM
@@ -14,42 +19,42 @@ type VaporVM struct {
 	pc     uint16     // program counter
 }
 
-type Instruction struct {
+type instruction struct {
 	opcode uint16
 	arg0   uint16
 	arg1   uint16
 	arg2   uint16
 }
 
-const JumpSegmentSize = 256
+const jumpSegmentSize = 256
 
 const (
-	EXT      = iota
-	EXT_HALT = iota
-	EXT_CPY  = iota
-	EXT_NOT  = iota
-	EXT_LSL  = iota
-	EXT_LSR  = iota
-	EXT_JMP  = iota
-	EXT_NOP  = iota
-	ADD      = iota
-	SUB      = iota
-	ADDC     = iota
-	SUBC     = iota
-	CMP      = iota
-	JLT      = iota
-	JGT      = iota
-	JEQ      = iota
-	LDR      = iota
-	STR      = iota
-	LRC      = iota
-	AND      = iota
-	OR       = iota
-	XOR      = iota
+	ext     = 0x0
+	extHalt = 0x0
+	extCpy  = 0x1
+	extNot  = 0x2
+	extLsl  = 0x3
+	extLsr  = 0x4
+	extJmp  = 0x5
+	extNop  = 0x6
+	add     = 0x1
+	sub     = 0x2
+	addc    = 0x3
+	subc    = 0x4
+	cmp     = 0x5
+	jlt     = 0x6
+	jgt     = 0x7
+	jeq     = 0x8
+	ldr     = 0x9
+	str     = 0xA
+	lrc     = 0xB
+	and     = 0xC
+	or      = 0xD
+	xor     = 0xE
 )
 
-// CreateVM creates an initialized vaporspec VM.
-func CreateVM(code, rom []uint16) VaporVM {
+// NewVaporVM creates an initialized vaporspec VM.
+func NewVaporVM(code, rom []uint16) VaporVM {
 	var v VaporVM
 	v.Code = code
 	v.Rom = rom
@@ -58,15 +63,55 @@ func CreateVM(code, rom []uint16) VaporVM {
 
 // Run begins execution of code loaded in the VM
 func (v *VaporVM) Run() {
-	for i := range v.Code {
-		i := decode(v.Code[i])
+	g, err := gocui.NewGui(gocui.OutputNormal)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-		fmt.Printf("Execute: %4X\n", i.opcode)
+	defer g.Close()
+
+	key := make(chan int)
+
+	go getKeys(key)
+	tick := time.Tick(16 * time.Millisecond)
+
+MainLoop:
+	for {
+		select {
+		case pressed := <-key:
+			// Do this shit
+			if pressed == 113 {
+				break MainLoop
+			}
+			fmt.Printf("Key: %d\n", pressed)
+		case <-tick:
+			// update display!
+			v.updateDisplay()
+		default:
+			// put around
+			i := decode(v.Code[v.pc])
+			v.exec(i)
+			//fmt.Printf("Execute: %X%X%X%X\n", i.opcode, i.arg0, i.arg1, i.arg2)
+		}
 	}
 }
 
-func decode(u uint16) Instruction {
-	var inst Instruction
+func getKeys(ch chan int) {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		input, _ := reader.ReadByte()
+		value := int(input)
+		if value == 113 {
+			ch <- value
+			break
+		}
+		ch <- value
+	}
+}
+
+func decode(u uint16) instruction {
+	var inst instruction
 	clean := uint16(0x000F)
 	inst.opcode = u >> 12 & clean
 	inst.arg0 = u >> 8 & clean
@@ -75,38 +120,42 @@ func decode(u uint16) Instruction {
 	return inst
 }
 
+func (v *VaporVM) updateDisplay() {
+
+}
+
 // Executes an instruction
-func (v *VaporVM) exec(instr *Instruction) {
+func (v *VaporVM) exec(instr instruction) {
 	switch instr.opcode {
-	case EXT:
+	case ext:
 
 		switch instr.arg0 {
-		case EXT_HALT:
+		case extHalt:
 			fmt.Printf("Exiting at halt instruction\n")
 			os.Exit(0)
-		case EXT_CPY:
+		case extCpy:
 			v.regs[instr.arg1] = v.regs[instr.arg2]
-		case EXT_NOT:
+		case extNot:
 			v.regs[instr.arg1] = ^(v.regs[instr.arg2])
-		case EXT_LSL:
+		case extLsl:
 			v.regs[instr.arg0] = v.regs[instr.arg0] << v.regs[instr.arg1]
-		case EXT_LSR:
+		case extLsr:
 			v.regs[instr.arg0] = v.regs[instr.arg0] >> v.regs[instr.arg1]
-		case EXT_JMP:
-			v.pc = (v.regs[instr.arg1] * JumpSegmentSize) + v.regs[instr.arg2] - 1
-		case EXT_NOP:
+		case extJmp:
+			v.pc = (v.regs[instr.arg1] * jumpSegmentSize) + v.regs[instr.arg2] - 1
+		case extNop:
 			// No operation
 		}
 
-	case ADD:
+	case add:
 		v.regs[instr.arg0] = v.regs[instr.arg1] + v.regs[instr.arg2]
-	case SUB:
+	case sub:
 		v.regs[instr.arg0] = v.regs[instr.arg1] - v.regs[instr.arg2]
-	case ADDC:
+	case addc:
 		v.regs[instr.arg0] += ((instr.arg1 << 4) & 0x00F0) + instr.arg2
-	case SUBC:
+	case subc:
 		v.regs[instr.arg0] -= ((instr.arg1 << 4) & 0x00F0) + instr.arg2
-	case CMP:
+	case cmp:
 		if v.regs[instr.arg1] < v.regs[instr.arg2] {
 			v.regs[instr.arg0] = 0
 		} else if v.regs[instr.arg1] > v.regs[instr.arg2] {
@@ -114,34 +163,34 @@ func (v *VaporVM) exec(instr *Instruction) {
 		} else {
 			v.regs[instr.arg0] = 1
 		}
-	case JLT:
+	case jlt:
 		if v.regs[instr.arg0] == 0 {
-			v.pc = (v.regs[instr.arg1] * JumpSegmentSize) + v.regs[instr.arg2] - 1
+			v.pc = (v.regs[instr.arg1] * jumpSegmentSize) + v.regs[instr.arg2] - 1
 		}
-	case JGT:
+	case jgt:
 		if v.regs[instr.arg0] == 2 {
-			v.pc = (v.regs[instr.arg1] * JumpSegmentSize) + v.regs[instr.arg2] - 1
+			v.pc = (v.regs[instr.arg1] * jumpSegmentSize) + v.regs[instr.arg2] - 1
 		}
-	case JEQ:
+	case jeq:
 		if v.regs[instr.arg0] == 1 {
-			v.pc = (v.regs[instr.arg1] * JumpSegmentSize) + v.regs[instr.arg2] - 1
+			v.pc = (v.regs[instr.arg1] * jumpSegmentSize) + v.regs[instr.arg2] - 1
 		}
-	case LDR:
+	case ldr:
 		v.regs[instr.arg0] = v.memory[v.regs[instr.arg1]][v.regs[instr.arg2]]
-	case STR:
+	case str:
 		if v.regs[instr.arg1] < 128 { // Segment is not part of ROM
 			v.memory[v.regs[instr.arg1]][v.regs[instr.arg2]] = v.regs[instr.arg0]
 		} else {
 			fmt.Printf("Attempted illegal write to ROM\n")
 			os.Exit(1)
 		}
-	case LRC:
+	case lrc:
 		v.regs[instr.arg0] = ((instr.arg1 << 4) & 0x00F0) + instr.arg2
-	case AND:
+	case and:
 		v.regs[instr.arg0] = v.regs[instr.arg1] & v.regs[instr.arg2]
-	case OR:
+	case or:
 		v.regs[instr.arg0] = v.regs[instr.arg1] | v.regs[instr.arg2]
-	case XOR:
+	case xor:
 		v.regs[instr.arg0] = v.regs[instr.arg1] ^ v.regs[instr.arg2]
 	}
 }
