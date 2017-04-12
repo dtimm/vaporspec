@@ -13,7 +13,7 @@ import (
 func main() {
 	// Set up flag handling.
 	fileName := flag.String("f", "", "Input file")
-	scale := flag.Int("s", 1.0, "Display scale")
+	scale := flag.Int("s", 1, "Display scale")
 	romName := flag.String("r", "", "ROM file")
 
 	// Read in all flag values
@@ -33,7 +33,7 @@ func main() {
 	//m := image.NewRGBA(image.Rect(0, 0, width, height))
 	machine := vm.NewVaporVM(file, rom)
 
-	fmt.Printf("File: %v, ROM: %v, Scale: %v\n", len(file), len(rom), scale)
+	fmt.Printf("File: %v, ROM: %v, Scale: %d\n", len(file), len(rom), *scale)
 
 	machine.Run()
 
@@ -72,11 +72,11 @@ func readVaporFile(fileName string, isRom, printStatus bool) []uint16 {
 	u := make([]uint16, size)
 
 	for i := range u {
-		u[i] = uint16(binary.BigEndian.Uint16(b[i*2 : (i+1)*2]))
+		u[i] = uint16(binary.LittleEndian.Uint16(b[i*2 : (i+1)*2]))
 	}
 
 	if printStatus {
-		fmt.Printf("Read %v bytes from %s.\n", n, fileName)
+		fmt.Printf("Read %v bytes from %s.\n", numRead, fileName)
 	}
 
 	return u

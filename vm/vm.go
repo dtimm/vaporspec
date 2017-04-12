@@ -3,11 +3,8 @@ package vm
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"time"
-
-	"github.com/jroimartin/gocui"
 )
 
 // VaporVM An instance of a VaporSpec VM
@@ -63,13 +60,6 @@ func NewVaporVM(code, rom []uint16) VaporVM {
 
 // Run begins execution of code loaded in the VM
 func (v *VaporVM) Run() {
-	g, err := gocui.NewGui(gocui.OutputNormal)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer g.Close()
-
 	key := make(chan int)
 
 	go getKeys(key)
@@ -88,10 +78,15 @@ MainLoop:
 			// update display!
 			v.updateDisplay()
 		default:
-			// put around
+			// Run execute steps.
+			//fmt.Printf("v.pc=%X\nreg=%v", v.pc, v.regs)
 			i := decode(v.Code[v.pc])
-			v.exec(i)
 			//fmt.Printf("Execute: %X%X%X%X\n", i.opcode, i.arg0, i.arg1, i.arg2)
+			v.exec(i)
+			v.pc++
+
+			// execute every 2us
+			time.Sleep(2 * time.Microsecond)
 		}
 	}
 }
@@ -128,7 +123,6 @@ func (v *VaporVM) updateDisplay() {
 func (v *VaporVM) exec(instr instruction) {
 	switch instr.opcode {
 	case ext:
-
 		switch instr.arg0 {
 		case extHalt:
 			fmt.Printf("Exiting at halt instruction\n")
@@ -146,7 +140,6 @@ func (v *VaporVM) exec(instr instruction) {
 		case extNop:
 			// No operation
 		}
-
 	case add:
 		v.regs[instr.arg0] = v.regs[instr.arg1] + v.regs[instr.arg2]
 	case sub:
